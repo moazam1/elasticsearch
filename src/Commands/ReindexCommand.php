@@ -165,7 +165,8 @@ class ReindexCommand extends Command
 
 				$errors++;
 			}
-
+			unset($response);
+			gc_collect_cycles();
 			$this->output->progressAdvance();
 
 		} else {
