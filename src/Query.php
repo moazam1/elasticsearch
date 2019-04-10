@@ -1086,7 +1086,7 @@ class Query
                 $params["body"][] = $value;
 
             }
-
+			unset($data);
         }
 
         return (object)$this->connection->bulk($params);

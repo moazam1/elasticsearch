@@ -10,185 +10,183 @@ use Illuminate\Console\Command;
  */
 class ReindexCommand extends Command
 {
-    /**
-     * The name and signature of the console command.
-     *
-     * @var string
-     */
-    protected $signature = 'es:indices:reindex {index}{new_index}
+	/**
+	 * The name and signature of the console command.
+	 *
+	 * @var string
+	 */
+	protected $signature = 'es:indices:reindex {index}{new_index}
                             {--bulk-size=1000 : Scroll size}
                             {--skip-errors : Skip reindexing errors}
                             {--hide-errors : Hide reindexing errors}
                             {--scroll=2m : query scroll time}
                             {--connection= : Elasticsearch connection}';
 
-    /**
-     * The console command description.
-     *
-     * @var string
-     */
-    protected $description = 'Reindex indices data';
+	/**
+	 * The console command description.
+	 *
+	 * @var string
+	 */
+	protected $description = 'Reindex indices data';
 
-    /**
-     * ES connection name
-     * @var string
-     */
-    protected $connection;
+	/**
+	 * ES connection name
+	 * @var string
+	 */
+	protected $connection;
 
-    /**
-     * ES object
-     * @var object
-     */
-    protected $es;
+	/**
+	 * ES object
+	 * @var object
+	 */
+	protected $es;
 
-    /**
-     * Query bulk size
-     * @var integer
-     */
-    protected $size;
-
-
-    /**
-     * Scroll time
-     * @var string
-     */
-    protected $scroll;
-
-    /**
-     * ReindexCommand constructor.
-     */
-    function __construct()
-    {
-        parent::__construct();
-        $this->es = app("es");
-    }
+	/**
+	 * Query bulk size
+	 * @var integer
+	 */
+	protected $size;
 
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
-    public function handle()
-    {
+	/**
+	 * Scroll time
+	 * @var string
+	 */
+	protected $scroll;
 
-        $this->connection = $this->option("connection") ? $this->option("connection") : config("es.default");
-
-        $this->size = (int)$this->option("bulk-size");
-
-        $this->scroll = $this->option("scroll");
-
-        if ($this->size <= 0 or !is_numeric($this->size)) {
-            return $this->warn("Invalide size value");
-        }
-
-        $original_index = $this->argument('index');
-
-        $new_index = $this->argument('new_index');
-
-        if (!in_array($original_index, array_keys(config("es.indices")))) {
-            return $this->warn("Missing configuration for index: {$original_index}");
-        }
-
-        if (!in_array($new_index, array_keys(config("es.indices")))) {
-            return $this->warn("Missing configuration for index: {$new_index}");
-        }
-
-        $this->migrate($original_index, $new_index);
-    }
+	/**
+	 * ReindexCommand constructor.
+	 */
+	function __construct()
+	{
+		parent::__construct();
+		$this->es = app("es");
+	}
 
 
-    /**
-     * Migrate data with Scroll queries & Bulk API
-     * @param $original_index
-     * @param $new_index
-     * @param null $scroll_id
-     * @param int $errors
-     * @param int $page
-     */
-    function migrate($original_index, $new_index, $scroll_id = null, $errors = 0, $page = 1)
-    {
+	/**
+	 * Execute the console command.
+	 *
+	 * @return mixed
+	 */
+	public function handle()
+	{
 
-        if ($page == 1) {
+		$this->connection = $this->option("connection") ? $this->option("connection") : config("es.default");
 
-            $pages = (int)ceil($this->es->connection($this->connection)->index($original_index)->count() / $this->size);
+		$this->size = (int)$this->option("bulk-size");
 
-            $this->output->progressStart($pages);
+		$this->scroll = $this->option("scroll");
 
-            $documents = $this->es->connection($this->connection)->index($original_index)->type("")
-                ->scroll($this->scroll)
-                ->take($this->size)
-                ->response();
+		if ($this->size <= 0 or !is_numeric($this->size)) {
+			return $this->warn("Invalide size value");
+		}
 
-        } else {
+		$original_index = $this->argument('index');
 
-            $documents = $this->es->connection($this->connection)->index($original_index)->type("")
-                ->scroll($this->scroll)
-                ->scrollID($scroll_id)
-                ->response();
+		$new_index = $this->argument('new_index');
 
-        }
+		if (!in_array($original_index, array_keys(config("es.indices")))) {
+			return $this->warn("Missing configuration for index: {$original_index}");
+		}
 
-        if (isset($documents["hits"]["hits"]) and count($documents["hits"]["hits"])) {
+		if (!in_array($new_index, array_keys(config("es.indices")))) {
+			return $this->warn("Missing configuration for index: {$new_index}");
+		}
 
-            $data = $documents["hits"]["hits"];
+		$this->migrate($original_index, $new_index);
+	}
 
-            $params = [];
 
-            foreach ($data as $row) {
+	/**
+	 * Migrate data with Scroll queries & Bulk API
+	 * @param $original_index
+	 * @param $new_index
+	 * @param null $scroll_id
+	 * @param int $errors
+	 * @param int $page
+	 */
+	function migrate($original_index, $new_index, $scroll_id = null, $errors = 0, $page = 1)
+	{
 
-                $params["body"][] = [
+		if ($page == 1) {
 
-                    'index' => [
-                        '_index' => $new_index,
-                        '_type' => $row["_type"],
-                        '_id' => $row["_id"]
-                    ]
+			$pages = (int)ceil($this->es->connection($this->connection)->index($original_index)->count() / $this->size);
 
-                ];
+			$this->output->progressStart($pages);
 
-                $params["body"][] = $row["_source"];
+			$documents = $this->es->connection($this->connection)->index($original_index)->type("")
+			                      ->scroll($this->scroll)
+			                      ->take($this->size)
+			                      ->response();
 
-            }
+		} else {
 
-            $response = $this->es->connection($this->connection)->raw()->bulk($params);
+			$documents = $this->es->connection($this->connection)->index($original_index)->type("")
+			                      ->scroll($this->scroll)
+			                      ->scrollID($scroll_id)
+			                      ->response();
 
-            if (isset($response["errors"]) and $response["errors"]) {
+		}
 
-                if (!$this->option("hide-errors")) {
+		if (isset($documents["hits"]["hits"]) and count($documents["hits"]["hits"])) {
+			$params = [];
 
-                    if ($this->option("skip-errors")) {
-                        $this->warn("\n" . json_encode($response["items"]));
-                    } else {
-                        return $this->warn("\n" . json_encode($response["items"]));
-                    }
+			foreach ($documents["hits"]["hits"] as $row) {
 
-                }
+				$params["body"][] = [
 
-                $errors++;
-            }
+					'index' => [
+						'_index' => $new_index,
+						'_type' => $row["_type"],
+						'_id' => $row["_id"]
+					]
 
-            $this->output->progressAdvance();
+				];
 
-        } else {
+				$params["body"][] = $row["_source"];
 
-            // Reindexing finished
+			}
 
-            $this->output->progressFinish();
+			$response = $this->es->connection($this->connection)->raw()->bulk($params);
+			$scrollId = $documents["_scroll_id"];
+			unset($params);
+			unset($documents);
 
-            $total = $this->es->connection($this->connection)->index($original_index)->count();
+			if (isset($response["errors"]) and $response["errors"]) {
+				if (!$this->option("hide-errors")) {
+					if ($this->option("skip-errors")) {
+						$this->warn("\n" . json_encode($response["items"]));
+					} else {
+						return $this->warn("\n" . json_encode($response["items"]));
+					}
 
-            if ($errors > 0) {
-                return $this->warn("$total documents reindexed with $errors errors.");
-            } else {
-                return $this->info("$total documents reindexed $errors errors.");
-            }
+				}
 
-        }
+				$errors++;
+			}
 
-        $page++;
+			$this->output->progressAdvance();
 
-        $this->migrate($original_index, $new_index, $documents["_scroll_id"], $errors, $page);
-    }
+		} else {
+
+			// Reindexing finished
+
+			$this->output->progressFinish();
+
+			$total = $this->es->connection($this->connection)->index($original_index)->count();
+
+			if ($errors > 0) {
+				return $this->warn("$total documents reindexed with $errors errors.");
+			} else {
+				return $this->info("$total documents reindexed $errors errors.");
+			}
+
+		}
+
+		$page++;
+
+		$this->migrate($original_index, $new_index, $scrollId, $errors, $page);
+	}
 
 }
